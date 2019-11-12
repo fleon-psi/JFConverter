@@ -1,0 +1,6 @@
+[submodule "zstd"]
+	path = zstd
+	url = https://github.com/facebook/zstd
+[submodule "json"]
+	path = json
+	url = https://github.com/nlohmann/json
