@@ -10,15 +10,23 @@
 #define ROUND_LOC_BUFFER(x) (x)
 
 inline uint16_t jf_round_u16(float x) {
-	if (x >= (float) UINT16_MAX) return (uint16_t) (UINT16_MAX-1);
+	if (x >= (float) UINT16_MAX) return (uint16_t) (UINT16_MAX-2);
+	if (x <= (float) INT16_MIN)   return (uint16_t) (UINT16_MAX-1);
 	else if (x > 0.0f) return (uint16_t) (x + 0.5f);
 	else return (uint16_t) 0;
 }
 
+inline uint16_t jf_round_i16(float x) {
+	if (x >= (float) INT16_MAX) return (uint16_t) (INT16_MAX-1);
+	if (x <= (float) INT16_MIN) return (uint16_t) (INT16_MIN+1);
+	else if (x > 0.0f) return (uint16_t) (x + 0.5f);
+	else return (uint16_t) (x-0.5f);
+}
+
 inline uint32_t jf_round_u32(float x) {
-	if (x >= (float) INT32_MAX) return (int32_t) (INT32_MAX / 2 - 1);
-	if (x <= (float) INT32_MIN) return (int32_t) (INT32_MAX / 2 + 1);
-	else if (x >= 0.0f) return (int32_t) (x + 0.5f);
+	if (x >= (float) INT32_MAX) return (uint32_t) (INT32_MAX / 2 - 1);
+	if (x <= (float) INT32_MIN) return (uint32_t) (INT32_MAX / 2 + 1);
+	else if (x >= 0.0f) return (uint32_t) (x + 0.5f);
 	else return (int32_t) 0;
 }
 
@@ -74,23 +82,22 @@ JungfrauConverter::JungfrauConverter (std::string data, std::string gainMapFile,
 	// Ignore frames with no photons
 	for (int i = 0; i < px.frames_delay; i ++) {
 		if (thisfile->ReadFrame (jf_frame, start_channel)) {
+#ifdef PEDESTAL_DRIFT
 			for (int line = 0 ; line < CHANNELS_PER_WORKER/1024 ; line ++) {
-				int line_in_module = line + start_channel/1024;
-
 #pragma ivdep
 				for (int j = 0; j < 1024; j++)
 				{
 					int ch = j + line*1024;
 
-					uint16_t gain = (jf_frame[ch] & 0xc000);
-					uint16_t adc = jf_frame[ch] & 0x3fff;
+//					uint16_t gain = (jf_frame[ch] & 0xc000);
+//					uint16_t adc = jf_frame[ch] & 0x3fff;
 
-					float adcfloat = adc;
-
-					if ((gain == 0) && (fabs (adcfloat - pedeG0[ch]) < TIMES_RMS_THRESHOLD_FOR_PEDE * pedeG0_RMS[ch]))
-						pedeG0[ch] = (pedeG0[ch] * 99.0f + adcfloat) / 100.0f;
+					float adcfloat = jf_frame[ch]; // only gain0, so jf_frame[ch] == adc
+					if ((jf_frame[ch] < 0xc000) && (fabs (adcfloat - pedeG0[ch]) < TIMES_RMS_THRESHOLD_FOR_PEDE * pedeG0_RMS[ch]))
+						pedeG0[ch] = (pedeG0[ch] * (PEDE_WINDOW - 1.0f) + adcfloat) / PEDE_WINDOW;
 				}
 			}
+#endif
 		} else std::cout << "\nFile error!\n";
 		ReloadFile (1);
 	}
@@ -100,13 +107,24 @@ JungfrauConverter::JungfrauConverter (std::string data, std::string gainMapFile,
 	for (int i = 0; i < CHANNELS_PER_WORKER; i++) {
 		int ch = start_channel + i;
 		int pixelid = start_pos + (ch / 1024) * XPIXEL + ((ch % 1024) / 256) * 258 + (ch % 256);
+
+		// Mirror flip
+		pixelid = (YPIXEL - 1 - pixelid / XPIXEL) * XPIXEL +  pixelid % XPIXEL;
+
 		pixelMask[pixelid] = channelMask[i];
 
 		if ((ch%256 == 0) && (ch%1024 != 0)) pixelMask[pixelid - 1 ] = channelMask[i];
 		if ((ch%256 == 255) && (ch%1024 != 1023)) pixelMask[pixelid + 1 ] = channelMask[i];
-
-		if ((ch/1024 == 255)) pixelMask[pixelid - YPIXEL ] = channelMask[i];
-		if ((ch/1024 == 256)) pixelMask[pixelid + YPIXEL ] = channelMask[i];
+		if (NCH == 256*1024) { // 2 kHz
+                    if (even_module) {
+		        if (ch/1024 == 0) pixelMask[pixelid - YPIXEL ] = channelMask[i];
+		    } else {
+		        if (ch/1024 == 255) pixelMask[pixelid + YPIXEL ] = channelMask[i];
+                    }
+		} else {
+		    if (ch/1024 == 255) pixelMask[pixelid + YPIXEL ] = channelMask[i];
+		    if (ch/1024 == 256) pixelMask[pixelid - YPIXEL ] = channelMask[i];
+		}
 	}
 };
 
@@ -136,7 +154,6 @@ void JungfrauConverter::LoadPixelMask(std::string pixelMaskFile) {
 		}
 		else std::cout << "Unable to open file " << pixelMaskFile << std::endl;
 	}
-
 }
 
 void JungfrauConverter::LoadGain(std::string gainMapFile, double energy_in_keV) {
@@ -327,6 +344,21 @@ void JungfrauConverter::CopyLine(uint16_t *imageBuffer, int start_pos_in_buffer,
 	}
 }
 
+void JungfrauConverter::CopyLine(int16_t *imageBuffer, int start_pos_in_buffer, int start_pos_in_local) {
+	int idx = 0;
+#pragma ivdep
+	for (int i = 0; i < 1024; i++) {
+		if (((i % 256 == 255) && (i / 256 < 3)) || (i % 256 == 0) && (i / 256 > 0)) {
+			imageBuffer[start_pos_in_buffer+idx] = jf_round_i16(localBuffer[start_pos_in_local+i] / 2.0f);
+			imageBuffer[start_pos_in_buffer+idx+1] = jf_round_i16(localBuffer[start_pos_in_local+i] / 2.0f);
+			idx += 2;
+		} else {
+			imageBuffer[start_pos_in_buffer+idx] = jf_round_i16(localBuffer[start_pos_in_local+i]);
+			idx++;
+		}
+	}
+}
+
 // Copies single line
 void JungfrauConverter::CopyLine(float *imageBuffer, int start_pos_in_buffer, int start_pos_in_local) {
 	int idx = 0;
@@ -402,6 +434,26 @@ void JungfrauConverter::CopyLineWithHorizGap(uint16_t *imageBuffer, int start_po
 }
 
 // Copies single line
+void JungfrauConverter::CopyLineWithHorizGap(int16_t *imageBuffer, int start_pos_in_buffer, int start_pos_in_local, int gap) {
+	int idx = 0;
+#pragma ivdep
+	for (int i = 0; i < 1024; i++) {
+		if (((i % 256 == 255) && (i / 256 < 3)) || (i % 256 == 0) && (i / 256 > 0)) {
+			imageBuffer[start_pos_in_buffer+idx] = jf_round_i16(localBuffer[start_pos_in_local+i] / 4.0f);
+			imageBuffer[start_pos_in_buffer+idx+1] = jf_round_i16(localBuffer[start_pos_in_local+i] / 4.0f);
+			imageBuffer[start_pos_in_buffer+idx+gap*XPIXEL] = jf_round_i16(localBuffer[start_pos_in_local+i] / 4.0f);
+			imageBuffer[start_pos_in_buffer+idx+gap*XPIXEL+1] = jf_round_i16(localBuffer[start_pos_in_local+i] / 4.0f);
+			idx += 2;
+		} else {
+			imageBuffer[start_pos_in_buffer+idx] = jf_round_i16(localBuffer[start_pos_in_local+i] / 2.0f);
+			imageBuffer[start_pos_in_buffer+idx+gap*XPIXEL] = jf_round_i16(localBuffer[start_pos_in_local+i] / 2.0f);
+			idx++;
+		}
+	}
+
+}
+
+// Copies single line
 void JungfrauConverter::CopyLineWithHorizGap(float *imageBuffer, int start_pos_in_buffer, int start_pos_in_local, int gap) {
 	int idx = 0;
 #pragma ivdep
@@ -464,8 +516,10 @@ template<typename T> void JungfrauConverter::Convert (T *imageBuffer, std::vecto
 		for (int line = 0 ; line < CHANNELS_PER_WORKER/1024 ; line ++) {
 			uint32_t pixelid0 = XPIXEL * YPIXEL * i;
 			uint32_t line_in_module = line + start_channel/1024;
-			uint32_t pos = pixelid0 + start_pos + line_in_module*XPIXEL;
 
+			// Mirror image of the detector
+			uint32_t pos_img = start_pos + line_in_module*XPIXEL;
+			uint32_t pos = pixelid0 + (YPIXEL - pos_img / XPIXEL - 1) * XPIXEL + pos_img % XPIXEL;
 #pragma ivdep
 			for (int j = 0; j < 1024; j++)
 			{
@@ -539,17 +593,17 @@ template<typename T> void JungfrauConverter::Convert (T *imageBuffer, std::vecto
 			}
 			if (NCH == 256*1024) { // 2 kHz
 				if (even_module) {
-					if (line_in_module == 0)      CopyLineWithHorizGap(imageBuffer, pos , 0,-1);
+					if (line_in_module == 0)      CopyLineWithHorizGap(imageBuffer, pos , 0,+1);
 					else                          CopyLine(imageBuffer, pos , 0);
 				} else {
-					if (line_in_module == 255)    CopyLineWithHorizGap(imageBuffer, pos , 0,+1);
+					if (line_in_module == 255)    CopyLineWithHorizGap(imageBuffer, pos , 0,-1);
 					else                          CopyLine(imageBuffer, pos , 0);
 				}
 			} else {
 				if (line_in_module > 255) pos -= 2*XPIXEL; // account for horizontal line with multi-sized pixels
 
-				if (line_in_module == 255)	 CopyLineWithHorizGap(imageBuffer, pos , 0,+1);
-				else if (line_in_module == 256)  CopyLineWithHorizGap(imageBuffer, pos , 0,-1);
+				if (line_in_module == 255)	 CopyLineWithHorizGap(imageBuffer, pos , 0,-1);
+				else if (line_in_module == 256)  CopyLineWithHorizGap(imageBuffer, pos , 0,+1);
 				else                             CopyLine(imageBuffer, pos , 0);
 			}
 		}
@@ -577,7 +631,10 @@ template<typename T> void JungfrauConverter::ConvertSum1 (T *imageBuffer, std::v
 			int local_G2 = 0;
 
 			uint32_t pixelid0 = XPIXEL * YPIXEL * i;
-			uint32_t pos = pixelid0 + start_pos + line_in_module*XPIXEL;
+
+			// Mirror image of the detector
+			uint32_t pos_img = start_pos + line_in_module*XPIXEL;
+			uint32_t pos = pixelid0 + (YPIXEL - pos_img / XPIXEL - 1) * XPIXEL + pos_img % XPIXEL;
 
 #pragma ivdep
 			for (int j = 0; j < 1024; j++) {
@@ -613,17 +670,17 @@ template<typename T> void JungfrauConverter::ConvertSum1 (T *imageBuffer, std::v
 			}
 			if (NCH == 256*1024) { // 2 kHz
 				if (even_module) {
-					if (line_in_module == 0)      CopyLineWithHorizGap(imageBuffer, pos , 0,-1);
+					if (line_in_module == 0)      CopyLineWithHorizGap(imageBuffer, pos , 0,+1);
 					else                          CopyLine(imageBuffer, pos , 0);
 				} else {
-					if (line_in_module == 255)    CopyLineWithHorizGap(imageBuffer, pos , 0,+1);
+					if (line_in_module == 255)    CopyLineWithHorizGap(imageBuffer, pos , 0,-1);
 					else                          CopyLine(imageBuffer, pos , 0);
 				}
 			} else {
 				if (line_in_module > 255) pos -= 2*XPIXEL; // account for horizontal line with multi-sized pixels
 
-				if (line_in_module == 255)	 CopyLineWithHorizGap(imageBuffer, pos , 0,+1);
-				else if (line_in_module == 256)  CopyLineWithHorizGap(imageBuffer, pos , 0,-1);
+				if (line_in_module == 255)	 CopyLineWithHorizGap(imageBuffer, pos , 0,-1);
+				else if (line_in_module == 256)  CopyLineWithHorizGap(imageBuffer, pos , 0,+1);
 				else                             CopyLine(imageBuffer, pos , 0);
 			}
 			pixels_in_G1[i] += local_G1;
@@ -634,10 +691,12 @@ template<typename T> void JungfrauConverter::ConvertSum1 (T *imageBuffer, std::v
 
 template void JungfrauConverter::ConvertSum1<float> (float *imageBuffer, std::vector<int> &pixels_in_G1, std::vector<int> &pixels_in_G2, long frames_to_write);
 template void JungfrauConverter::ConvertSum1<uint16_t> (uint16_t *imageBuffer, std::vector<int> &pixels_in_G1, std::vector<int> &pixels_in_G2, long frames_to_write);
+template void JungfrauConverter::ConvertSum1<int16_t> (int16_t *imageBuffer, std::vector<int> &pixels_in_G1, std::vector<int> &pixels_in_G2, long frames_to_write);
 template void JungfrauConverter::ConvertSum1<uint32_t> (uint32_t *imageBuffer, std::vector<int> &pixels_in_G1, std::vector<int> &pixels_in_G2, long frames_to_write);
 template void JungfrauConverter::ConvertSum1<int32_t> (int32_t *imageBuffer, std::vector<int> &pixels_in_G1, std::vector<int> &pixels_in_G2, long frames_to_write);
 
 template void JungfrauConverter::Convert<float> (float *imageBuffer, std::vector<int> &pixels_in_G1, std::vector<int> &pixels_in_G2, long frames_to_write);
 template void JungfrauConverter::Convert<int32_t> (int32_t *imageBuffer, std::vector<int> &pixels_in_G1, std::vector<int> &pixels_in_G2, long frames_to_write);
 template void JungfrauConverter::Convert<uint16_t> (uint16_t *imageBuffer, std::vector<int> &pixels_in_G1, std::vector<int> &pixels_in_G2, long frames_to_write);
+template void JungfrauConverter::Convert<int16_t> (int16_t *imageBuffer, std::vector<int> &pixels_in_G1, std::vector<int> &pixels_in_G2, long frames_to_write);
 template void JungfrauConverter::Convert<uint32_t> (uint32_t *imageBuffer, std::vector<int> &pixels_in_G1, std::vector<int> &pixels_in_G2, long frames_to_write);

@@ -6,16 +6,20 @@ ifndef HDF5_PATH
 endif
 
 SZ_PATH=SZ/sz
-LZ_PATH=lz4
-GZIP_LIB=-lz
+#LZ4_PATH=lz4/lib
+LZ4_PATH=/home/jungfrau/experimental/JFConverter/lz4
+#GZIP_LIB=-lz
+GZIP_LIB=/home/jungfrau/experimental/JFConverter/zlib-1.2.11/libz.a
+BITSHUFFLE_PATH=bitshuffle
+ZSTD_PATH=zstd
 
-CPPFLAGS= -I$(HDF5_PATH)/include -I$(LZ_PATH) -I$(SZ_PATH)/include -Ijson/single_include -Izstd/lib
-JF_LDLIBS=$(HDF5_PATH)/lib/libhdf5.a zstd/lib/libzstd.a $(GZIP_LIB) -ldl
+CPPFLAGS=-I$(BITSHUFFLE_PATH)/src -I$(HDF5_PATH)/include -I$(LZ4_PATH) -I$(SZ_PATH)/include -Ijson/single_include -I$(ZSTD_PATH)/lib -DUSE_ZSTD
+JF_LDLIBS=$(HDF5_PATH)/lib/libhdf5.a $(ZSTD_PATH)/lib/libzstd.a $(GZIP_LIB) -ldl
 
 SRCS= parseMetadata.o JungfrauFile.o JungfrauPixelMask.o JungfrauHDF5Writer.o JungfrauHDF5Writer_h5functions.o\
       JungfrauHDF5Writer_compress.o JungfrauConverter.o sharedVariables.o WriterThread.o ConverterThread.o main.o \
-      bitshuffle/bitshuffle.o bitshuffle/bitshuffle_core.o bitshuffle/iochain.o bitshuffle/bshuf_h5filter.o\
-      lz4/lz4.o lz4_plugin/H5Zlz4.o zstd_plugin/zstd_h5plugin.o
+      $(BITSHUFFLE_PATH)/src/bitshuffle.o $(BITSHUFFLE_PATH)/src/bitshuffle_core.o $(BITSHUFFLE_PATH)/src/iochain.o $(BITSHUFFLE_PATH)/src/bshuf_h5filter.o\
+      $(LZ4_PATH)/lz4.o lz4_plugin/H5Zlz4.o zstd_plugin/zstd_h5plugin.o
 
 ifeq ($(UNAME_P), ppc64le)
     CC=xlc_r
@@ -66,7 +70,7 @@ JFConverter: $(SRCS) jungfrau.h
 	$(CXX) $(LDFLAGS) $(SRCS) -o JFConverter $(JF_LDLIBS)
 
 clean:
-	rm -f *.o bitshuffle/*.o lz4/*.o lz4_plugin/*.o JFConverter
+	rm -f *.o $(BITSHUFFLE_PATH)/src/*.o $(LZ4_PATH)/lib/lz4.o lz4_plugin/*.o JFConverter
 
 install:
 	cp JFConverter /usr/local/bin

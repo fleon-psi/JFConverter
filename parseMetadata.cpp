@@ -2,6 +2,7 @@
 #include <iostream>
 #include <fstream>
 #include <cstdlib>
+#include <cstdint>
 #include <string>
 #include <sched.h>
 #include "nlohmann/json.hpp"
@@ -37,7 +38,7 @@ void show_usage() {
 	std::cerr << "    -N                    Don't use direct chunk writer"    << std::endl;
 	//std::cerr << "    -a                    Write unconverted ADC (slow and doesn't compress very well!)" << std::endl;
 	std::cerr << "    -x                    Output as floating point numbers" << std::endl;
-	std::cerr << "    -u                    Output as uint16 numbers - only for summation of 1" << std::endl;
+	std::cerr << "    -u                    Output as unsigned numbers" << std::endl;
 	std::cerr << std::endl;
 	std::cerr << "  Compression algorithms available: gzip, lz4, bshuf_lz4, sz, zstd, bshuf_zstd, none" << std::endl;
 	std::cerr << "  Prefix fast_ indicates direct chunk writer" << std::endl;
@@ -51,16 +52,15 @@ int parseMetadata(PXMetadata &px, int argc, char **argv) {
 
 	bool json_opened = false;
 	bool use_direct_chunk_writer = true;
-
-	mode = SIMPLE_MODE;
-
+	bool use_signed = true;
+	bool use_float = false;
 	int c;
 	int option_index = 0;
 	std::string json_filename;
 	std::string path_node0, path_node1, path_node2, path_node3;
 	std::string suffix = "";
 	int number_of_writers = MAX_NUM_WRITERS;
-
+        
 #if defined(HPEDL580)
 	std::string output = "/mnt/zfs/output";
 #else
@@ -93,16 +93,15 @@ int parseMetadata(PXMetadata &px, int argc, char **argv) {
 			{"mult"  ,    required_argument,  0, 'm'},
 			{"multE"  ,   required_argument,  0, 'M'},
 			{"debug" ,          no_argument,  0, 'g'},
-			{"uint16",          no_argument,  0, '2'},
-			{"uint32",          no_argument,  0, '4'},
+			{"uint",            no_argument,  0, 'u'},
 			{"float",           no_argument,  0, 'x'},
 			{"compression",required_argument, 0, 'c'},
 			{"gzip",       required_argument, 0, 'Z'},
 			{"still",      required_argument, 0, 't'},
 			{"abs",        required_argument, 0, 'A'},
 			{"nodirect",        no_argument,  0, 'N'},
-			{"bshuf_block",required_argument,  0, 'B'},
-            {"writer",     required_argument, 0, 'W'},
+			{"bshuf_block",required_argument, 0, 'B'},
+                        {"writer",     required_argument, 0, 'W'},
 			{0       ,                    0,  0,  0 }
 	};
 	int tmp;
@@ -117,13 +116,10 @@ int parseMetadata(PXMetadata &px, int argc, char **argv) {
                         }
 			break;	
 		case 'x':
-			mode = FLOAT_MODE;
+			use_float = true;
 			break;
-		case '2':
-			mode = UINT16_MODE;
-			break;
-		case '4':
-			mode = UINT32_MODE;
+		case 'u':
+			use_signed = false;
 			break;
 		case 'B':
 			tmp = atoi(optarg);
@@ -255,10 +251,6 @@ int parseMetadata(PXMetadata &px, int argc, char **argv) {
 		parsed_ok = false;
 	}
 
-	if ((mode == UINT16_MODE) && (sum > 2)) {
-		std::cerr << "ERROR: For uint16 mode summation has to be set to 1 or 2" << std::endl;
-		parsed_ok = false;
-	}
 
 	nlohmann::json j;
 	std::ifstream input;
@@ -340,8 +332,6 @@ int parseMetadata(PXMetadata &px, int argc, char **argv) {
 		px.hdf5_prefix = file; // prefix for HDF5 files
 
 	if (suffix != "") px.hdf5_prefix += "_" + suffix;
-
-
 
 	std::cout << "Summation of " << px.summation << std::endl;
 	std::cout << "Data should be present in " << px.intended_number_of_images << " images." << std::endl;
@@ -427,6 +417,18 @@ int parseMetadata(PXMetadata &px, int argc, char **argv) {
 #endif
 #endif
 
+        if (use_float) px.mode = FLOAT_MODE;
+        else {
+            // Approximate value of the highest possible pixel value
+            float approx_saturation = 15000.0 * 12400.0 * px.summation / px.photon_energy_for_normalization;
+	    if (use_signed) {
+               if (approx_saturation > INT16_MAX/2) px.mode = INT32_MODE;
+               else px.mode = INT16_MODE;
+            } else {
+               if (approx_saturation > UINT16_MAX/2) px.mode = UINT32_MODE;
+               else px.mode = UINT16_MODE;
+            }
+        }
 
 	for (int i = 0; i < NMODULES; i++) {
 		try {

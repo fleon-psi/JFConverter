@@ -5,11 +5,11 @@ void *WriterThread(void *in_threadarg) {
 	int ret;
 
 	WriterThreadArg *in = (WriterThreadArg *)in_threadarg;
-	if ((mode == UINT16_MODE) && (px.summation == 1)) {
-		buffer[in->threadid] = malloc (px.nimages_per_file*YPIXEL*XPIXEL*sizeof(uint16_t));
+	if ((px.mode == UINT16_MODE) || (px.mode == INT16_MODE)) {
+		buffer[in->threadid] = malloc (px.nimages_per_file*YPIXEL*XPIXEL*2);
 		MALLOC_ERROR(buffer[in->threadid]);
 	} else {
-		buffer[in->threadid] = malloc (px.nimages_per_file*YPIXEL*XPIXEL*sizeof(int32_t));
+		buffer[in->threadid] = malloc (px.nimages_per_file*YPIXEL*XPIXEL*4);
 		MALLOC_ERROR(buffer[in->threadid]);
 	}
 
@@ -64,6 +64,7 @@ void *WriterThread(void *in_threadarg) {
 	PTHREAD_ERROR(ret,pthread_mutex_unlock);
 
 	if (px.use_direct_chunk_writer) free(compression_buffer);
+	free(buffer[in->threadid]);
 
 	pthread_exit(0);
 };

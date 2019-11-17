@@ -37,10 +37,14 @@ JungfrauHDF5Writer::JungfrauHDF5Writer(const PXMetadata& in_metadata) {
 	ret = pthread_mutex_unlock(&hdf5_semaphore);
 	PTHREAD_ERROR(ret,pthread_mutex_unlock);
 
-	switch (mode) {
+	switch (in_metadata.mode) {
 	case UINT16_MODE:
 		elem_size = 2;
 		data_type = H5T_STD_U16LE;
+		break;
+	case INT16_MODE:
+		elem_size = 2;
+		data_type = H5T_STD_I16LE;
 		break;
 	case UINT32_MODE:
 		elem_size = 4;
@@ -50,7 +54,7 @@ JungfrauHDF5Writer::JungfrauHDF5Writer(const PXMetadata& in_metadata) {
 		elem_size = 4;
 		data_type = H5T_NATIVE_FLOAT;
 		break;
-	case SIMPLE_MODE:
+	case INT32_MODE:
 		elem_size = 4;
 		data_type = H5T_STD_I32LE;
 		break;
@@ -244,13 +248,25 @@ void JungfrauHDF5Writer::SaveMetadata(const PXMetadata& in_metadata) {
 	saveDouble(grp,"x_pixel_size",PIXEL_SIZE_IN_MM/1000,"m");
 	saveDouble(grp,"y_pixel_size",PIXEL_SIZE_IN_MM/1000,"m");
 	saveString(grp,"sensor_material","Si");
-	saveString(grp,"description","PSI Jungfrau 1M");
-	if (mode == UINT16_MODE) {
-		saveInt(grp,"saturation_value", UINT16_MAX-2);
-	} else {
-		saveInt(grp,"underload_value", INT32_MIN/2+2);
-		saveInt(grp,"saturation_value", INT32_MAX/2-2);
-	}
+	saveString(grp,"description","PSI Jungfrau");
+
+        switch (in_metadata.mode) {
+	     case UINT16_MODE:
+		saveInt(grp,"saturation_value", UINT16_MAX-3);
+		break;
+	     case UINT32_MODE:
+		saveInt(grp,"saturation_value", UINT32_MAX/2-3);
+		break;
+	     case INT16_MODE:
+		saveInt(grp,"saturation_value", INT16_MAX-3);
+		saveInt(grp,"underload_value", INT16_MIN+3);
+		break;
+	     case INT32_MODE:
+		saveInt(grp,"saturation_value", INT32_MAX/2-3);
+		saveInt(grp,"underload_value", INT32_MIN/2+3);
+		break;
+        }
+
 	H5Gclose(grp);
 
 	grp = createGroup(master_file_id, "/entry/instrument/detector/detectorSpecific","NXcollection");

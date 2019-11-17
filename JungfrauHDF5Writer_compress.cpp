@@ -2,8 +2,8 @@
 
 #include "jungfrau.h"
 
-#include "bitshuffle/bitshuffle.h"
-#include "bitshuffle/bitshuffle_core.h"
+#include "bitshuffle.h"
+#include "bitshuffle_core.h"
 
 #include "lz4.h"
 
@@ -34,9 +34,9 @@ void JungfrauHDF5Writer::InitCompression() {
 size_t JungfrauHDF5Writer::CompressionOutputMaxSize() {
 	switch(compressionAlgorithm) {
 	case COMPRESSION_BSHUF_LZ4:
-		return bshuf_compress_lz4_bound(XPIXEL*YPIXEL,elem_size,0) + 12;
+		return bshuf_compress_lz4_bound(XPIXEL*YPIXEL,elem_size,bshuf_block_size) + 12;
 	case COMPRESSION_BSHUF_ZSTD:
-		return bshuf_compress_zstd_bound(XPIXEL*YPIXEL,elem_size,0) + 12;
+		return bshuf_compress_zstd_bound(XPIXEL*YPIXEL,elem_size,bshuf_block_size) + 12;
 	case COMPRESSION_GZIP:
 		return DEFLATE_SIZE_ADJUST(XPIXEL*YPIXEL*elem_size);
 	case COMPRESSION_LZ4:
@@ -57,9 +57,10 @@ size_t JungfrauHDF5Writer::Compress(char *output,  char *input) {
 
 	switch(compressionAlgorithm) {
 	case COMPRESSION_BSHUF_LZ4:
-		// Default block size determined by bitshuffle internals
-		block_size = bshuf_default_block_size(elem_size);
-
+		if (bshuf_block_size == 0)
+			// Default block size determined by bitshuffle internals
+			block_size = bshuf_default_block_size(elem_size);
+		else block_size = bshuf_block_size;
 		// write header - taken from bshuf_h5filter.c
 		// uncompressed size
 		bshuf_write_uint64_BE(output, input_size);
@@ -67,11 +68,13 @@ size_t JungfrauHDF5Writer::Compress(char *output,  char *input) {
 		// block_size * element_size
 		bshuf_write_uint32_BE(output + 8, block_size * elem_size );
 
-		return bshuf_compress_lz4(input, output+12, XPIXEL*YPIXEL,elem_size,0) + 12;
+		return bshuf_compress_lz4(input, output+12, XPIXEL*YPIXEL,elem_size,block_size) + 12;
 
 	case COMPRESSION_BSHUF_ZSTD:
-		// Default block size determined by bitshuffle internals
-		block_size = bshuf_default_block_size(elem_size);
+		if (bshuf_block_size == 0)
+			// Default block size determined by bitshuffle internals
+			block_size = bshuf_default_block_size(elem_size);
+		else block_size = bshuf_block_size;
 
 		// write header - taken from bshuf_h5filter.c
 		// uncompressed size
@@ -80,7 +83,7 @@ size_t JungfrauHDF5Writer::Compress(char *output,  char *input) {
 		// block_size * element_size
 		bshuf_write_uint32_BE(output + 8, block_size * elem_size );
 
-		return bshuf_compress_zstd(input, output+12, XPIXEL*YPIXEL,elem_size,0) + 12;
+		return bshuf_compress_zstd(input, output+12, XPIXEL*YPIXEL,elem_size,block_size) + 12;
 	case COMPRESSION_GZIP:
 		z_dst_nbytes = (uLongf) output_size;
 
@@ -121,14 +124,14 @@ void JungfrauHDF5Writer::SetCompressionFilter(hid_t data_dcpl_id) {
 	switch(compressionAlgorithm) {
 	case COMPRESSION_BSHUF_LZ4:
 	{
-		unsigned int params[] = {0, BSHUF_H5_COMPRESS_LZ4};
+		unsigned int params[] = {bshuf_block_size, BSHUF_H5_COMPRESS_LZ4};
 		h5ret = H5Pset_filter(data_dcpl_id, (H5Z_filter_t)BSHUF_H5FILTER, H5Z_FLAG_MANDATORY, (size_t)2, params);
 		HDF5_ERROR(h5ret,H5Pset_filter);
 		break;
 	}
 	case COMPRESSION_BSHUF_ZSTD:
 	{
-		unsigned int params[] = {0, BSHUF_H5_COMPRESS_ZSTD};
+		unsigned int params[] = {bshuf_block_size, BSHUF_H5_COMPRESS_ZSTD};
 		h5ret = H5Pset_filter(data_dcpl_id, (H5Z_filter_t)BSHUF_H5FILTER, H5Z_FLAG_MANDATORY, (size_t)2, params);
 		HDF5_ERROR(h5ret,H5Pset_filter);
 		break;

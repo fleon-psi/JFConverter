@@ -37,12 +37,18 @@ void *ConverterThread(void *in_threadarg)
         std::vector<int> local_pixels_in_G1(frames);
         std::vector<int> local_pixels_in_G2(frames);
 
-        switch (mode) {
-        case SIMPLE_MODE:
+        switch (px.mode) {
+        case INT32_MODE:
         	if (px.summation == 1)
         		converter->ConvertSum1<int32_t>((int32_t *) buffer[curr_buffer], local_pixels_in_G1, local_pixels_in_G2, frames);
         	else
         		converter->Convert<int32_t>((int32_t *) buffer[curr_buffer], local_pixels_in_G1, local_pixels_in_G2, frames);
+        	break;
+        case INT16_MODE:
+        	if (px.summation == 1)
+        		converter->ConvertSum1<int16_t>((int16_t *) buffer[curr_buffer], local_pixels_in_G1, local_pixels_in_G2, frames);
+        	else
+        		converter->Convert<int16_t>((int16_t *) buffer[curr_buffer], local_pixels_in_G1, local_pixels_in_G2, frames);
         	break;
 
         case FLOAT_MODE:

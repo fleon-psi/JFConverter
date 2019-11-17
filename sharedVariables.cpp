@@ -164,10 +164,6 @@ int *pixels_in_G2[NMODULES];
 
 JungfrauHDF5Writer *wrt;
 
-ConverterMode mode = SIMPLE_MODE;
-
-bool keep_negative_numbers = false;
-
 pthread_mutex_t tasks_assigned_semaphore = PTHREAD_MUTEX_INITIALIZER;
 int tasks_assigned = 0;
 

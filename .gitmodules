@@ -4,3 +4,9 @@
 [submodule "json"]
 	path = json
 	url = https://github.com/nlohmann/json
+[submodule "bitshuffle"]
+	path = bitshuffle
+	url = https://github.com/fleon-psi/bitshuffle
+[submodule "lz4"]
+	path = lz4
+	url = https://github.com/lz4/lz4

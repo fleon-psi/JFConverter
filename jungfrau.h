@@ -89,7 +89,7 @@
 
 typedef enum
 {
-    SIMPLE_MODE, UINT16_MODE, UINT32_MODE, FLOAT_MODE
+    INT32_MODE, INT16_MODE, UINT16_MODE, UINT32_MODE, FLOAT_MODE
 } ConverterMode;
 
 typedef enum
@@ -107,6 +107,8 @@ typedef enum
  * In future should be imported directly from DAQ handler
  */
 struct PXMetadata {
+    ConverterMode mode;
+
     int number_of_writers;
 
     int nimages_collected; // total number of images collected during the experiment (raw)
@@ -250,11 +252,13 @@ class JungfrauConverter {
     void ReloadFile(int summation);
 
     void CopyLine(uint16_t *imageBuffer, int start_pos_in_buffer, int start_pos_in_local);
+    void CopyLine(int16_t *imageBuffer, int start_pos_in_buffer, int start_pos_in_local);
     void CopyLine(uint32_t *imageBuffer, int start_pos_in_buffer, int start_pos_in_local);
     void CopyLine(int32_t *imageBuffer, int start_pos_in_buffer, int start_pos_in_local);
     void CopyLine(float *imageBuffer, int start_pos_in_buffer, int start_pos_in_local);
 
     void CopyLineWithHorizGap(uint16_t *imageBuffer, int start_pos_in_buffer, int start_pos_in_local, int gap);
+    void CopyLineWithHorizGap(int16_t *imageBuffer, int start_pos_in_buffer, int start_pos_in_local, int gap);
     void CopyLineWithHorizGap(uint32_t *imageBuffer, int start_pos_in_buffer, int start_pos_in_local, int gap);
     void CopyLineWithHorizGap(int32_t *imageBuffer, int start_pos_in_buffer, int start_pos_in_local, int gap);
     void CopyLineWithHorizGap(float *imageBuffer, int start_pos_in_buffer, int start_pos_in_local, int gap);
@@ -398,7 +402,6 @@ extern double fast[NMODULES_GEOM][3];
 extern double slow[NMODULES_GEOM][3];
 
 // set up startup and not modified
-extern ConverterMode mode;
 extern PXMetadata px;
 extern size_t number_of_tasks;
 extern long images_to_do;

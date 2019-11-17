@@ -154,12 +154,10 @@ int main(int argc, char ** argv) {
     for(int t=0; t< px.number_of_writers; t++){
         ret = pthread_join(writer[t], NULL);
         PTHREAD_ERROR(ret,pthread_join);
-        free(buffer[t]);
     } 
 
     wrt->SavePixelMask(pixel_mask);
 
-    if (mode == SIMPLE_MODE) {
             int *gain1 = (int *) calloc(images_to_do,sizeof(int));
             int *gain2 = (int *) calloc(images_to_do,sizeof(int));
 
@@ -193,7 +191,7 @@ int main(int argc, char ** argv) {
             }
             free(gain1);
             free(gain2);
-    }
+    
 
     for (int i = 0; i < NMODULES; i++) {
         wrt->SaveDetectorSpecificData("gain_map_file_mod",gainMapFiles[i],i);
