@@ -263,7 +263,7 @@ int parseMetadata(PXMetadata &px, int argc, char **argv) {
 	if (input.fail()) {
 		std::cerr << "ERROR: Error opening/reading file " << json_filename << std::endl;
 		parsed_ok = false;
-	}
+	} else {
 
 	px.number_of_writers = number_of_writers;
 	input >> j;
@@ -438,7 +438,7 @@ int parseMetadata(PXMetadata &px, int argc, char **argv) {
 			px.tempFPGA[i] = -273.15;
 		}
 	}
-
+        }
 	if (!parsed_ok) {
 		show_usage();
 		exit(EXIT_FAILURE);
