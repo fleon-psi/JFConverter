@@ -106,7 +106,7 @@ size_t JungfrauHDF5Writer::Compress(char *output,  char *input) {
 		bshuf_write_uint32_BE((char*) output + 8, input_size);
 
 		// Compress
-		res = LZ4_compress_default(input, output, input_size, output_size);
+		res = LZ4_compress_default(input, output + 16, input_size, output_size - 16);
 
 		// Write size after compression
 		bshuf_write_uint32_BE(output + 12, res);
