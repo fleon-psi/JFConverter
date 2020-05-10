@@ -107,6 +107,8 @@ JungfrauConverter::JungfrauConverter (std::string data, std::string gainMapFile,
 	for (int i = 0; i < CHANNELS_PER_WORKER; i++) {
 		int ch = start_channel + i;
 		int pixelid = start_pos + (ch / 1024) * XPIXEL + ((ch % 1024) / 256) * 258 + (ch % 256);
+                if (ch/1024 == 256) pixelid += XPIXEL;
+                if (ch/1024 > 256) pixelid += 2 * XPIXEL;
 
 		// Mirror flip
 		pixelid = (YPIXEL - 1 - pixelid / XPIXEL) * XPIXEL +  pixelid % XPIXEL;
@@ -117,13 +119,13 @@ JungfrauConverter::JungfrauConverter (std::string data, std::string gainMapFile,
 		if ((ch%256 == 255) && (ch%1024 != 1023)) pixelMask[pixelid + 1 ] = channelMask[i];
 		if (NCH == 256*1024) { // 2 kHz
                     if (even_module) {
-		        if (ch/1024 == 0) pixelMask[pixelid - YPIXEL ] = channelMask[i];
+		        if (ch/1024 == 0) pixelMask[pixelid - XPIXEL ] = channelMask[i];
 		    } else {
-		        if (ch/1024 == 255) pixelMask[pixelid + YPIXEL ] = channelMask[i];
+		        if (ch/1024 == 255) pixelMask[pixelid + XPIXEL ] = channelMask[i];
                     }
 		} else {
-		    if (ch/1024 == 255) pixelMask[pixelid + YPIXEL ] = channelMask[i];
-		    if (ch/1024 == 256) pixelMask[pixelid - YPIXEL ] = channelMask[i];
+		    if (ch/1024 == 255) pixelMask[pixelid - XPIXEL ] = channelMask[i];
+		    if (ch/1024 == 256) pixelMask[pixelid - XPIXEL ] = channelMask[i];
 		}
 	}
 };
